@@ -16,6 +16,10 @@
   <strong>That is a 97% reduction — per lookup, every lookup.</strong>
 </p>
 
+```bash
+pip install symdex
+```
+
 ---
 
 ## The Problem
@@ -72,6 +76,111 @@ On a large codebase, a single development session can burn hundreds of thousands
 ```
 
 SymDex does not read files for the agent. It tells the agent **exactly where to look** — file path and byte offset — so the agent reads only the bytes it needs. Nothing more.
+
+---
+
+## Real-World Example
+
+Here is a complete session showing how an agent uses SymDex to navigate a codebase:
+
+**Setup — index the project once:**
+```bash
+symdex index ./myproject --name myproject
+symdex serve   # start the MCP server
+```
+
+**Agent calls `search_symbols` to locate a function:**
+```json
+// Tool call
+{ "tool": "search_symbols", "query": "validate_email", "repo": "myproject" }
+
+// Response (~200 tokens)
+{
+  "symbols": [
+    {
+      "name": "validate_email",
+      "kind": "function",
+      "file": "auth/utils.py",
+      "start_byte": 1024,
+      "end_byte": 1340,
+      "signature": "def validate_email(email: str) -> bool"
+    }
+  ]
+}
+```
+
+**Agent calls `get_symbol` to read only that function:**
+```json
+// Tool call — reads bytes 1024 to 1340 only
+{ "tool": "get_symbol", "file": "auth/utils.py", "start_byte": 1024, "end_byte": 1340, "repo": "myproject" }
+
+// Response — the exact function source, nothing else
+{
+  "source": "def validate_email(email: str) -> bool:\n    \"\"\"Validate email format.\"\"\"\n    pattern = r'^[\\w.-]+@[\\w.-]+\\.\\w+$'\n    return bool(re.match(pattern, email))"
+}
+```
+
+**Agent calls `get_callers` to understand impact before changing it:**
+```json
+// Tool call
+{ "tool": "get_callers", "name": "validate_email", "repo": "myproject" }
+
+// Response
+{
+  "callers": [
+    { "name": "register_user",  "file": "auth/views.py",  "kind": "function" },
+    { "name": "update_profile", "file": "users/views.py", "kind": "function" }
+  ]
+}
+```
+
+**Agent uses `semantic_search` when it doesn't know the exact name:**
+```json
+// Tool call
+{ "tool": "semantic_search", "query": "check if user email address is valid", "repo": "myproject" }
+
+// Response — finds by meaning, not by name
+{
+  "symbols": [
+    { "name": "validate_email", "score": 0.91, "file": "auth/utils.py" },
+    { "name": "is_valid_address", "score": 0.74, "file": "core/validators.py" }
+  ]
+}
+```
+
+Total tokens for this entire session: **~800 tokens.** Without SymDex, finding and reading these three functions would cost **~25,000 tokens.**
+
+---
+
+## For AI Agents
+
+> **If you are an AI agent reading this:** Follow these rules to use SymDex correctly.
+
+**Rule 1 — Index before anything else.**
+Call `index_folder` with the project path at the start of every session. Without this, the index is empty and all searches return nothing.
+
+```json
+{ "tool": "index_folder", "path": "/path/to/project", "name": "myproject" }
+```
+
+**Rule 2 — Never read a full file to find a function.**
+Always call `search_symbols` first. Use the returned `start_byte` and `end_byte` to read only the relevant bytes via `get_symbol`.
+
+**Rule 3 — Use the right tool for the right query.**
+
+| What you want | Tool to call |
+|---|---|
+| Find a function by name | `search_symbols` |
+| Read a function's source | `get_symbol` (use byte offsets from search) |
+| Find by meaning / description | `semantic_search` |
+| See all symbols in a file | `get_file_outline` |
+| Understand project structure | `get_repo_outline` |
+| Find who calls a function | `get_callers` |
+| Find what a function calls | `get_callees` |
+| Search for a string in code | `search_text` |
+
+**Rule 4 — Re-index after code changes.**
+Call `index_folder` again (or `invalidate_cache` for a specific file) after modifying source files so the index reflects the latest state.
 
 ---
 
@@ -216,6 +325,8 @@ For HTTP mode (remote agents):
 
 ## Installation
 
+Available on [PyPI](https://pypi.org/project/symdex/):
+
 ```bash
 pip install symdex
 ```
@@ -238,6 +349,14 @@ SymDex walks the directory, parses every supported source file, and writes the i
 
 ```bash
 symdex search "validate_email" --repo myproject
+```
+
+```
+┏━━━━━━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┓
+┃ Repo           ┃ Kind     ┃ Name           ┃ File                                    ┃ Start ┃
+┡━━━━━━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━┩
+│ myproject      │ function │ validate_email │ auth/utils.py                           │ 1024  │
+└────────────────┴──────────┴────────────────┴─────────────────────────────────────────┴───────┘
 ```
 
 ### 3. Start the MCP server
@@ -421,4 +540,4 @@ MIT — see [LICENSE](LICENSE)
 
 ## Contributing
 
-Issues and pull requests are welcome at [github.com/husnainpk/symdex](https://github.com/husnainpk/symdex).
+Issues and pull requests are welcome at [github.com/husnainpk/SymDex](https://github.com/husnainpk/SymDex).
