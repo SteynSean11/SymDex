@@ -195,6 +195,7 @@ def _get_registry_connection() -> sqlite3.Connection:
 
 def upsert_repo(name: str, root_path: str, db_path: str) -> None:
     """Register or update a repo in the central registry."""
+    name = name.lower()
     conn = _get_registry_connection()
     try:
         conn.execute(
