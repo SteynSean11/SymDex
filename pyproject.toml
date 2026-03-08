@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "symdex"
-version = "0.1.0"
+version = "0.1.1"
 description = "Universal code-indexer MCP server for AI coding agents"
 authors = [{name = "Muhammad Husnain"}]
 license = {text = "MIT"}
