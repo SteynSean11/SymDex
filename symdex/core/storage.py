@@ -161,10 +161,10 @@ def search_text_in_index(
 
 
 def get_db_path(repo_name: str) -> str:
-    """Return path to ~/.symdex/<repo_name>.db"""
+    """Return path to ~/.symdex/<repo_name>.db — repo_name is normalized to lowercase."""
     base = os.path.join(os.path.expanduser("~"), ".symdex")
     os.makedirs(base, exist_ok=True)
-    return os.path.join(base, f"{repo_name}.db")
+    return os.path.join(base, f"{repo_name.lower()}.db")
 
 
 def get_registry_path() -> str:
