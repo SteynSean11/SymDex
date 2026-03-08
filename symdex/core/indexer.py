@@ -88,7 +88,7 @@ def index_folder(path: str, name: str | None = None) -> IndexResult:
         IndexResult with repo, db_path, indexed_count, skipped_count.
     """
     abs_path = os.path.abspath(path)
-    repo = name or os.path.basename(abs_path)
+    repo = (name or os.path.basename(abs_path)).lower()
     db_path = get_db_path(repo)
     conn = get_connection(db_path)
 
