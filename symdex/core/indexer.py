@@ -8,6 +8,7 @@ import os
 from dataclasses import dataclass
 from symdex.core.parser import parse_file
 from symdex.graph.call_graph import extract_edges as _extract_edges
+from symdex.core.route_extractor import extract_routes as _extract_routes
 from symdex.core.storage import (
     get_connection,
     get_db_path,
@@ -15,6 +16,8 @@ from symdex.core.storage import (
     upsert_file,
     upsert_symbol,
     upsert_embedding,
+    delete_file_routes,
+    upsert_route,
 )
 
 logger = logging.getLogger(__name__)
@@ -140,6 +143,31 @@ def index_folder(path: str, name: str | None = None) -> IndexResult:
                     (repo, rel_file),
                 ).fetchall()
                 _extract_edges(conn, repo=repo, file_path=rel_file, abs_file=abs_file, symbols=[dict(r) for r in sym_rows])
+                # Route extraction for Python and JS/TS files
+                _ROUTE_LANG_MAP = {
+                    ".py": "python", ".js": "javascript", ".ts": "typescript",
+                    ".jsx": "javascript", ".tsx": "typescript",
+                }
+                file_lang = _ROUTE_LANG_MAP.get(ext)
+                if file_lang:
+                    try:
+                        with open(abs_file, "rb") as rh:
+                            raw = rh.read()
+                        file_routes = _extract_routes(raw, rel_file, file_lang)
+                        delete_file_routes(conn, repo=repo, file=rel_file)
+                        for route in file_routes:
+                            upsert_route(
+                                conn,
+                                repo=repo,
+                                file=rel_file,
+                                method=route.method,
+                                path=route.path,
+                                handler=route.handler,
+                                start_byte=route.start_byte,
+                                end_byte=route.end_byte,
+                            )
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("Route extraction failed for %s: %s", abs_file, exc)
                 upsert_file(conn, repo=repo, path=rel_file, file_hash=current_hash)
                 indexed += 1
         conn.commit()

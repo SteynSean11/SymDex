@@ -195,3 +195,36 @@ def test_delete_file_routes(tmp_path):
     rows = query_routes(conn, repo="r")
     assert all(row["file"] == "other.py" for row in rows)
     conn.close()
+
+
+def test_index_folder_extracts_routes(tmp_path):
+    """index_folder should populate the routes table for Flask files."""
+    from unittest.mock import patch
+
+    repo_dir = tmp_path / "flask_app"
+    repo_dir.mkdir()
+    (repo_dir / "views.py").write_text(
+        'from flask import Flask\napp = Flask(__name__)\n\n'
+        '@app.get("/hello")\ndef hello(): pass\n'
+    )
+
+    from symdex.core.indexer import index_folder
+    from symdex.core.storage import get_connection, query_routes
+
+    db_path_store = {}
+
+    def fake_db_path(repo):
+        import os
+        p = str(tmp_path / f"{repo}.db")
+        db_path_store[repo] = p
+        return p
+
+    with patch("symdex.core.indexer.get_db_path", fake_db_path), \
+         patch("symdex.core.storage.get_db_path", fake_db_path), \
+         patch("symdex.search.semantic.embed_text", return_value=[0.0] * 384):
+        result = index_folder(str(repo_dir), name="flask_test")
+
+    conn = get_connection(db_path_store["flask_test"])
+    routes = query_routes(conn, repo="flask_test")
+    conn.close()
+    assert any(r["path"] == "/hello" for r in routes)
