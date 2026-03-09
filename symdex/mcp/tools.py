@@ -276,3 +276,31 @@ def get_callees_tool(name: str, repo: str) -> dict:
     finally:
         conn.close()
     return {"callees": callees}
+
+
+def search_routes_tool(
+    repo: str,
+    method: str | None = None,
+    path_contains: str | None = None,
+    limit: int = 50,
+) -> dict:
+    """Find HTTP routes indexed from a repo.
+
+    Args:
+        repo: Repo name as registered with index_folder or index_repo.
+        method: Filter by HTTP method (GET, POST, PUT, DELETE, PATCH). Optional.
+        path_contains: Filter routes whose path contains this substring. Optional.
+        limit: Maximum results. Default 50.
+
+    Returns:
+        {"routes": [{method, path, handler, file, start_byte, end_byte}, ...]}
+    """
+    from symdex.core.storage import query_routes
+    db_path = get_db_path(repo)
+    conn = get_connection(db_path)
+    try:
+        rows = query_routes(conn, repo=repo, method=method,
+                            path_contains=path_contains, limit=limit)
+    finally:
+        conn.close()
+    return {"routes": rows}
