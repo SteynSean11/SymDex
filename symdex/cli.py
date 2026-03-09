@@ -18,6 +18,7 @@ from symdex.core.storage import (
     get_registry_path,  # noqa: F401 — imported for monkeypatching
     query_file_symbols,
     query_repos,
+    query_routes,
     search_text_in_index,
     upsert_repo,
 )
@@ -298,6 +299,34 @@ def invalidate(
         typer.echo(json.dumps({"invalidated": count}))
         return
     console.print(f"Invalidated [green]{count}[/green] record(s) for repo '[cyan]{repo}[/cyan]'")
+
+
+@app.command()
+def routes(
+    repo: str = typer.Argument(..., help="Repo name to query routes for."),
+    method: Optional[str] = typer.Option(None, "--method", "-m", help="Filter by HTTP method (GET, POST, ...)."),
+    path_contains: Optional[str] = typer.Option(None, "--path", "-p", help="Filter routes whose path contains this string."),
+) -> None:
+    """List HTTP routes indexed for a repo."""
+    db_path = get_db_path(repo)
+    conn = get_connection(db_path)
+    try:
+        rows = query_routes(conn, repo=repo, method=method, path_contains=path_contains)
+    finally:
+        conn.close()
+
+    if not rows:
+        console.print(f"[yellow]No routes indexed for repo '{repo}'.[/yellow]")
+        return
+
+    table = Table(title=f"Routes — {repo}", show_header=True, header_style="bold")
+    table.add_column("Method", style="cyan", width=8)
+    table.add_column("Path")
+    table.add_column("Handler")
+    table.add_column("File")
+    for r in rows:
+        table.add_row(r["method"], r["path"], r.get("handler") or "", r["file"])
+    console.print(table)
 
 
 @app.command()
