@@ -143,3 +143,55 @@ def test_empty_source_returns_empty():
 
 def test_unsupported_lang_returns_empty():
     assert extract_routes(b"some content", "file.rs", "rust") == []
+
+
+from symdex.core.storage import upsert_route, query_routes, delete_file_routes
+
+
+def test_upsert_and_query_route(tmp_path):
+    db = str(tmp_path / "r.db")
+    conn = get_connection(db)
+    upsert_route(conn, repo="myapp", file="api.py", method="GET",
+                 path="/users", handler="list_users", start_byte=0, end_byte=100)
+    conn.commit()
+    rows = query_routes(conn, repo="myapp")
+    assert len(rows) == 1
+    assert rows[0]["path"] == "/users"
+    assert rows[0]["method"] == "GET"
+    conn.close()
+
+
+def test_query_routes_filter_method(tmp_path):
+    db = str(tmp_path / "r2.db")
+    conn = get_connection(db)
+    upsert_route(conn, repo="r", file="f.py", method="GET",  path="/a", handler="h1", start_byte=0, end_byte=10)
+    upsert_route(conn, repo="r", file="f.py", method="POST", path="/b", handler="h2", start_byte=11, end_byte=20)
+    conn.commit()
+    rows = query_routes(conn, repo="r", method="POST")
+    assert len(rows) == 1
+    assert rows[0]["path"] == "/b"
+    conn.close()
+
+
+def test_query_routes_filter_path(tmp_path):
+    db = str(tmp_path / "r3.db")
+    conn = get_connection(db)
+    upsert_route(conn, repo="r", file="f.py", method="GET", path="/users", handler="h", start_byte=0, end_byte=10)
+    upsert_route(conn, repo="r", file="f.py", method="GET", path="/items", handler="h", start_byte=11, end_byte=20)
+    conn.commit()
+    rows = query_routes(conn, repo="r", path_contains="user")
+    assert len(rows) == 1
+    conn.close()
+
+
+def test_delete_file_routes(tmp_path):
+    db = str(tmp_path / "r4.db")
+    conn = get_connection(db)
+    upsert_route(conn, repo="r", file="api.py", method="GET", path="/a", handler="h", start_byte=0, end_byte=10)
+    upsert_route(conn, repo="r", file="other.py", method="GET", path="/b", handler="h", start_byte=0, end_byte=10)
+    conn.commit()
+    delete_file_routes(conn, repo="r", file="api.py")
+    conn.commit()
+    rows = query_routes(conn, repo="r")
+    assert all(row["file"] == "other.py" for row in rows)
+    conn.close()

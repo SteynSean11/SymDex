@@ -247,3 +247,50 @@ def query_symbols_with_embeddings(
         params.append(repo)
     rows = conn.execute(sql, params).fetchall()
     return [dict(r) for r in rows]
+
+
+def upsert_route(
+    conn: sqlite3.Connection,
+    repo: str,
+    file: str,
+    method: str,
+    path: str,
+    handler: Optional[str],
+    start_byte: int,
+    end_byte: int,
+) -> None:
+    """Insert or ignore an HTTP route record."""
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO routes (repo, file, method, path, handler, start_byte, end_byte)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (repo, file, method.upper(), path, handler or "", start_byte, end_byte),
+    )
+
+
+def query_routes(
+    conn: sqlite3.Connection,
+    repo: str,
+    method: Optional[str] = None,
+    path_contains: Optional[str] = None,
+    limit: int = 50,
+) -> list[dict]:
+    """Query HTTP routes for a repo with optional method and path filters."""
+    sql = "SELECT * FROM routes WHERE repo=?"
+    params: list = [repo]
+    if method:
+        sql += " AND method=?"
+        params.append(method.upper())
+    if path_contains:
+        sql += " AND path LIKE ?"
+        params.append(f"%{path_contains}%")
+    sql += " ORDER BY file, start_byte LIMIT ?"
+    params.append(limit)
+    rows = conn.execute(sql, params).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_file_routes(conn: sqlite3.Connection, repo: str, file: str) -> None:
+    """Remove all route records for a specific file in a repo."""
+    conn.execute("DELETE FROM routes WHERE repo=? AND file=?", (repo, file))
