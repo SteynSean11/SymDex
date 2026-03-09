@@ -390,6 +390,7 @@ These are the tools your AI agent can call once SymDex is running as an MCP serv
 | `semantic_search` | Find symbols by meaning using embedding similarity |
 | `get_callers` | Find all functions that call a named function |
 | `get_callees` | Find all functions called by a named function |
+| `search_routes` | Find HTTP routes indexed from a repo (Flask/FastAPI/Django/Express) — filter by method or path |
 
 ---
 
@@ -418,6 +419,14 @@ symdex text "TODO" --repo myproj                   # Text search
 # Call graph
 symdex callers process_payment --repo myproj       # Who calls this function
 symdex callees process_payment --repo myproj       # What this function calls
+
+# Watch (auto-reindex on file changes)
+symdex watch ./myproject                           # Auto-reindex on file changes
+symdex watch ./myproject --interval 10             # Custom poll interval (seconds)
+
+# Routes
+symdex routes myproject                            # List all indexed HTTP routes
+symdex routes myproject -m GET                     # Filter by HTTP method
 
 # Server
 symdex serve                                       # Start MCP server (stdio)
