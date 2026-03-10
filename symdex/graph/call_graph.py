@@ -8,6 +8,8 @@ import logging
 import os
 import sqlite3
 
+from symdex.integrations.omega_sink import mirror_call_edge
+
 logger = logging.getLogger(__name__)
 
 _EXT_MAP: dict[str, tuple[str, str]] = {
@@ -109,6 +111,13 @@ def extract_edges(
             conn.execute(
                 "INSERT OR IGNORE INTO edges (caller_id, callee_name, callee_file) VALUES (?, ?, ?)",
                 (sym_id, callee_name, callee_file),
+            )
+            mirror_call_edge(
+                repo=repo,
+                file_path=file_path,
+                caller_name=sym.get("name", ""),
+                callee_name=callee_name,
+                callee_file=callee_file,
             )
 
     conn.commit()

@@ -10,3 +10,33 @@ build/
 .coverage
 htmlcov/
 .worktrees/
+
+# Local runtime and agent artifacts
+/.claude/
+/.gemini/
+/.agents/
+/.factory/
+/.opencode/
+/.serena/
+/.sessions/
+
+# Local agent docs
+/CLAUDE.md
+/GEMINI.md
+/AGENTS.md
+
+# Environment and secrets
+/.env
+/.env.*
+
+# Dependency directories
+/node_modules/
+
+# Additional cache artifacts
+.ruff_cache/
+.mypy_cache/
+
+# Local development docs and scratch space
+/docs-local/
+/local-docs/
+/.local-docs/

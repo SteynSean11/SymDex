@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from symdex.core.parser import parse_file
 from symdex.graph.call_graph import extract_edges as _extract_edges
 from symdex.core.route_extractor import extract_routes as _extract_routes
+from symdex.integrations.omega_sink import mirror_symbol
 from symdex.core.storage import (
     get_connection,
     get_db_path,
@@ -35,19 +36,44 @@ def _embed_symbols(conn, repo: str, file_path: str) -> None:
     from symdex.search.semantic import embed_text  # local import avoids circular dep
 
     rows = conn.execute(
-        "SELECT id, name, signature, docstring FROM symbols WHERE repo=? AND file=?",
+        "SELECT id, name, kind, start_byte, end_byte, signature, docstring "
+        "FROM symbols WHERE repo=? AND file=?",
         (repo, file_path),
     ).fetchall()
 
     for row in rows:
         symbol_id = row["id"]
         name = row["name"] or ""
+        kind = row["kind"] or "symbol"
+        start_byte = int(row["start_byte"] or 0)
+        end_byte = int(row["end_byte"] or 0)
         signature = row["signature"] or ""
         docstring = row["docstring"] or ""
         embed_input = f"{signature}\n{docstring}\n{name}".strip()
+        # Always mirror symbol metadata to Omega graph storage, even if embedding fails.
+        mirror_symbol(
+            repo=repo,
+            file_path=file_path,
+            name=name,
+            kind=kind,
+            start_byte=start_byte,
+            end_byte=end_byte,
+            signature=signature,
+            embedding=None,
+        )
         try:
             vec = embed_text(embed_input)
             upsert_embedding(conn, symbol_id, vec)
+            mirror_symbol(
+                repo=repo,
+                file_path=file_path,
+                name=name,
+                kind=kind,
+                start_byte=start_byte,
+                end_byte=end_byte,
+                signature=signature,
+                embedding=vec.tolist(),
+            )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Embedding failed for symbol %s (id=%s): %s", name, symbol_id, exc)
 
