@@ -28,9 +28,26 @@ pip install symdex
 
 ---
 
+## What You Get
+
+| | Feature | One line |
+|---|---|---|
+| **Find** | Symbol search | Locate any function, class, or method by name — returns exact byte offsets, no file reading |
+| **Find** | Semantic search | Don't know the name? Search by what it does — `semantic_search("validate email")` finds it |
+| **Understand** | Call graph | Who calls this function? What does it call? Pre-built at index time, instant at query time |
+| **Understand** | HTTP route indexing | What routes does this API expose? `search_routes` answers without opening a single file |
+| **Stay current** | Auto-watch | `symdex watch` — save a file, index updates automatically. Delete a file, it disappears from the index. No manual steps. |
+| **Scale** | Cross-repo registry | One SymDex, many projects. Search across all indexed repos simultaneously |
+| **Clean up** | Stale index GC | `symdex gc` — running parallel agents in git worktrees? One command removes orphaned databases |
+| **Access** | Full CLI | Every capability available from the terminal, no agent required |
+| **Access** | 16 MCP tools | Every capability available to any MCP-compatible AI agent |
+| **Language support** | 14 languages | Python · JS · TS · Go · Rust · Java · PHP · C# · C · C++ · Elixir · Ruby · Vue + more via tree-sitter |
+
+---
+
 ## The Problem
 
-Every time an AI coding agent needs to find a function, it reads the entire file that might contain it. Here is what that looks like in practice:
+Every time an AI coding agent needs to find a function, it reads the entire file that might contain it:
 
 ```
 Agent thought: "I need to find the validate_email function."
@@ -45,6 +62,52 @@ This is the equivalent of reading an entire book from page one every time you wa
 On a large codebase, a single development session can burn hundreds of thousands of tokens this way. That is real money, real slowness, and real context-window pressure.
 
 **SymDex is the index.**
+
+---
+
+## Three Things No Other Tool Does
+
+Most code navigation tools solve one problem. SymDex solves three.
+
+### 1. Find code by meaning, not just name
+
+Every other tool — LSP, grep, symbol search — requires you to know what you are looking for. SymDex does not.
+
+```bash
+# You don't know what the function is called. You know what it does.
+symdex semantic "check that a user's email address is properly formatted" --repo myproject
+```
+
+```
+┏━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Name             ┃ Kind     ┃ Score             ┃ File                   ┃
+┡━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ validate_email   │ function │ 0.91              │ auth/utils.py          │
+│ is_valid_address │ function │ 0.74              │ core/validators.py     │
+└──────────────────┴──────────┴───────────────────┴────────────────────────┘
+```
+
+Vector embeddings of every symbol's signature and docstring. Fully local — no API calls, nothing leaves your machine.
+
+### 2. Know your full API surface without reading any file
+
+SymDex extracts HTTP routes from your source during indexing. No more opening route files to understand what an API exposes.
+
+```bash
+symdex routes myproject -m POST
+# → POST /users  →  create_user  (api/views.py)
+# → POST /auth/login  →  login_user  (auth/views.py)
+```
+
+Supports Flask, FastAPI, Django, and Express. Agents can call `search_routes` directly via MCP.
+
+### 3. Stay current automatically
+
+```bash
+symdex watch ./myproject   # index now, then reindex on every save
+```
+
+Save a file — SymDex reindexes it. Delete a file — SymDex removes it from the index. The agent always sees the current state of your code without you doing anything.
 
 ---
 
@@ -87,8 +150,6 @@ SymDex does not read files for the agent. It tells the agent **exactly where to 
 
 ## Real-World Example
 
-Here is a complete session showing how an agent uses SymDex to navigate a codebase:
-
 **Setup — index the project once:**
 ```bash
 symdex index ./myproject --name myproject
@@ -128,10 +189,8 @@ symdex serve   # start the MCP server
 
 **Agent calls `get_callers` to understand impact before changing it:**
 ```json
-// Tool call
 { "tool": "get_callers", "name": "validate_email", "repo": "myproject" }
 
-// Response
 {
   "callers": [
     { "name": "register_user",  "file": "auth/views.py",  "kind": "function" },
@@ -142,10 +201,9 @@ symdex serve   # start the MCP server
 
 **Agent uses `semantic_search` when it doesn't know the exact name:**
 ```json
-// Tool call
 { "tool": "semantic_search", "query": "check if user email address is valid", "repo": "myproject" }
 
-// Response — finds by meaning, not by name
+// Finds by meaning, not by name
 {
   "symbols": [
     { "name": "validate_email", "score": 0.91, "file": "auth/utils.py" },
@@ -155,6 +213,44 @@ symdex serve   # start the MCP server
 ```
 
 Total tokens for this entire session: **~800 tokens.** Without SymDex, finding and reading these three functions would cost **~25,000 tokens.**
+
+---
+
+## SymDex vs. Everything Else
+
+Here is how SymDex compares to the tools people reach for:
+
+| Capability | LSP (pylsp, tsserver) | CodeGraphContext | Serena | **SymDex** |
+|---|---|---|---|---|
+| Find symbol by name | Yes | Yes | Yes | **Yes** |
+| Search by meaning / intent | No | No | No | **Yes — semantic_search** |
+| HTTP route indexing | No | No | No | **Yes — search_routes** |
+| Auto-watch, live reindex | No | No | No | **Yes — symdex watch** |
+| Call graph | Partial | Yes | Yes | **Yes** |
+| Cross-repo search | No | No | No | **Yes** |
+| Works without an editor | No | No | No | **Yes — terminal-native** |
+| Zero-config storage | No | No (graph DB) | No | **Yes — one SQLite file** |
+| pip install and done | No | No | No | **Yes** |
+| Requires language server per language | Yes | No | Yes | **No** |
+| Works offline (no API calls) | Yes | Yes | Yes | **Yes** |
+
+### vs. LSP (Language Server Protocol)
+
+LSP servers (pylsp, typescript-language-server, rust-analyzer) are excellent for editors. They require a running editor process, a language server installed and running per language, and they operate on live files in real time.
+
+SymDex is terminal-native and editor-free. An agent running in a terminal (Claude Code, Codex CLI, OpenCode) gets the same symbol lookup capability with zero editor dependency. And LSP cannot do semantic search — if you don't know the function name, LSP cannot help.
+
+### vs. CodeGraphContext
+
+CodeGraphContext builds a graph database over your code. The tradeoff: you need to choose and run a graph database backend (KùzuDB, Neo4j). SymDex uses SQLite — one file per repo, zero configuration. No backend, no server, no Docker.
+
+CodeGraphContext has no semantic search and no HTTP route indexing. SymDex has both.
+
+### vs. Serena
+
+Serena wraps real language servers and gets true type-aware analysis — it can resolve which concrete implementation is called through an interface, track generics, follow pointer dispatch. That is genuinely powerful for large, strongly-typed codebases.
+
+The tradeoff: Serena requires language servers installed per language and queries hit live files rather than a pre-built index. SymDex is faster per query (pre-indexed), works offline, and adds semantic search and route indexing — capabilities no language server provides.
 
 ---
 
@@ -184,13 +280,14 @@ Always call `search_symbols` first. Use the returned `start_byte` and `end_byte`
 | Find who calls a function | `get_callers` |
 | Find what a function calls | `get_callees` |
 | Search for a string in code | `search_text` |
+| List all HTTP routes | `search_routes` |
 
 **Rule 4 — Re-index after code changes.**
 Call `index_folder` again (or `invalidate_cache` for a specific file) after modifying source files so the index reflects the latest state.
 
 ---
 
-## SymDex vs. Conventional Approach
+## SymDex vs. Conventional File Reading
 
 | Capability | Conventional (read files) | SymDex |
 |-----------|--------------------------|--------|
@@ -213,17 +310,15 @@ Call `index_folder` again (or `invalidate_cache` for a specific file) after modi
 
 ## Features
 
-### Symbol Search
-Find any function, class, method, or variable by name across your entire indexed codebase. Returns file path and exact byte offsets. No file reading required.
-
 ### Semantic Search
-Can't remember the exact function name? Search by what it does.
+Find code by what it does, not what it is called. SymDex embeds every symbol's signature and docstring into a vector and finds the closest matches by meaning — not by keyword. Powered by `sentence-transformers` running fully locally, no API calls required.
 
 ```bash
 symdex semantic "parse and validate an authentication token" --repo myproject
 ```
 
-SymDex embeds every symbol's signature and docstring into a vector and finds the closest matches by meaning — not by keyword. Powered by `sentence-transformers` running fully locally, no API calls required.
+### Symbol Search
+Find any function, class, method, or variable by name across your entire indexed codebase. Returns file path and exact byte offsets. No file reading required.
 
 ### Call Graph
 Understand the impact of any change before you make it.
@@ -235,26 +330,9 @@ symdex callees process_payment --repo myproject   # What does this call? (depend
 
 Call relationships are extracted during indexing and stored as a graph. No file reading at query time.
 
-### Cross-Repo Registry
-Index multiple projects and search across all of them from one place.
-
-```bash
-symdex index ./frontend --name frontend
-symdex index ./backend  --name backend
-symdex search "validate_token"           # searches both repos simultaneously
-```
-
-Each repo gets its own SQLite database. The registry tracks all of them.
-
-### Change Detection
-SymDex stores a SHA-256 hash of every indexed file. Re-indexing only processes files that have actually changed. On large codebases this makes incremental updates take seconds, not minutes.
-
-### Full CLI
-Every MCP tool is also available as a CLI command. Use SymDex without an AI agent — in scripts, in CI, or just to explore your codebase.
-
 ### Auto-Watch — Live Index
 
-Run `symdex watch` once. Every time you save a file, SymDex automatically re-indexes only the changed file. Delete a file — SymDex removes it from the index. No more manual `symdex index` after every edit.
+Run `symdex watch` once. Every time you save a file, SymDex automatically re-indexes only the changed file. Delete a file — SymDex removes it from the index. The agent always sees the current state of your code.
 
 ```bash
 symdex watch ./myproject              # Index now, then watch for changes
@@ -280,6 +358,23 @@ Via MCP tool (agents can call this directly):
 { "tool": "search_routes", "repo": "myproject", "method": "GET" }
 // → [{ "method": "GET", "path": "/users", "handler": "list_users", "file": "api/views.py" }, ...]
 ```
+
+### Cross-Repo Registry
+Index multiple projects and search across all of them from one place.
+
+```bash
+symdex index ./frontend --name frontend
+symdex index ./backend  --name backend
+symdex search "validate_token"           # searches both repos simultaneously
+```
+
+Each repo gets its own SQLite database. The registry tracks all of them.
+
+### Change Detection
+SymDex stores a SHA-256 hash of every indexed file. Re-indexing only processes files that have actually changed. On large codebases this makes incremental updates take seconds, not minutes.
+
+### Full CLI
+Every MCP tool is also available as a CLI command. Use SymDex without an AI agent — in scripts, in CI, or just to explore your codebase.
 
 ### HTTP + stdio Transport
 Run SymDex as a local stdio server (default, for desktop agents) or as an HTTP server for remote access.
@@ -404,7 +499,7 @@ symdex search "validate_email" --repo myproject
 symdex serve
 ```
 
-Point your agent at it using the config above. The agent can now use all 15 MCP tools.
+Point your agent at it using the config above. The agent can now use all 16 MCP tools.
 
 ---
 
@@ -429,6 +524,7 @@ These are the tools your AI agent can call once SymDex is running as an MCP serv
 | `get_callers` | Find all functions that call a named function |
 | `get_callees` | Find all functions called by a named function |
 | `search_routes` | Find HTTP routes indexed from a repo (Flask/FastAPI/Django/Express) — filter by method or path |
+| `gc_stale_indexes` | Remove databases for repos whose directories no longer exist on disk |
 
 ---
 
@@ -466,36 +562,13 @@ symdex watch ./myproject --interval 10             # Custom poll interval (secon
 symdex routes myproject                            # List all indexed HTTP routes
 symdex routes myproject -m GET                     # Filter by HTTP method
 
+# Maintenance
+symdex gc                                          # Remove stale indexes for deleted/moved repos
+
 # Server
 symdex serve                                       # Start MCP server (stdio)
 symdex serve --port 8080                           # Start MCP server (HTTP)
 ```
-
----
-
-## How SymDex Differs from Other Tools
-
-### vs. LSP (Language Server Protocol)
-
-LSP servers (pylsp, typescript-language-server, rust-analyzer, etc.) are excellent tools — but they are designed for editors, not for standalone agents. They require a running editor process, a language server per language installed and running, and they operate on live files in real time.
-
-SymDex is **terminal-native and editor-free**. It runs wherever Python runs. No editor, no language server, no per-language daemon required. An agent running in a terminal (Claude Code, Codex CLI, OpenCode) gets the same symbol lookup capability with zero editor dependency.
-
-The other thing LSP cannot do: **semantic search**. LSP can find `validate_email` if you know the name. SymDex can find it if you describe what it does — "check that an email address is properly formatted" — without knowing the name exists.
-
-### vs. Graph-database code indexers
-
-Some tools build a full graph database (Neo4j, KùzuDB) over your code. This enables powerful queries — complexity analysis, cycle detection, deep inheritance trees. The tradeoff is operational complexity: choosing a backend, installing it, keeping it running.
-
-SymDex uses **SQLite — one file per repo, zero configuration**. No backend to choose, no server to run, no Docker. The index lives in `~/.symdex/`. Delete it and it rebuilds in seconds.
-
-SymDex adds what graph-db tools lack: **semantic search** (find by meaning, not just name) and **HTTP route indexing** (expose your API surface without reading files).
-
-### vs. LSP-wrapper tools (Serena, etc.)
-
-Tools that wrap real language servers get true type-aware analysis — they can resolve which concrete implementation is called through an interface, track generics, follow pointer dispatch. That is genuinely powerful for large, strongly-typed codebases.
-
-The tradeoff: they require language servers installed per language, and queries hit live files rather than a pre-built index. SymDex is faster per query (pre-indexed), works offline, and adds semantic search and route indexing — capabilities no language server provides.
 
 ---
 
@@ -577,7 +650,7 @@ Built on [FastMCP](https://github.com/jlowin/fastmcp). Supports both stdio trans
 symdex/
 ├── cli.py                  — Typer CLI (all user-facing commands)
 ├── core/
-│   ├── parser.py           — tree-sitter symbol extraction (14 languages + Vue)
+│   ├── parser.py           — tree-sitter symbol extraction (13 languages + Vue)
 │   ├── storage.py          — SQLite read/write, vector storage, route storage
 │   ├── indexer.py          — orchestrates parse → store pipeline
 │   ├── watcher.py          — file-system watcher (watchdog), auto-reindex
@@ -585,7 +658,7 @@ symdex/
 │   └── schema.sql          — database schema (symbols, edges, files, repos, routes)
 ├── mcp/
 │   ├── server.py           — FastMCP server definition
-│   └── tools.py            — 15 MCP tool implementations
+│   └── tools.py            — 16 MCP tool implementations
 ├── search/
 │   ├── symbol_search.py    — name-based FTS search
 │   ├── text_search.py      — regex/text search
@@ -602,7 +675,7 @@ symdex/
 ## FAQ
 
 **Do I need to re-index every time I change my code?**
-Only if you want SymDex to reflect your latest changes. SymDex uses SHA-256 hashes to track which files have changed — re-indexing only processes modified files, so it is fast on large codebases.
+No. Run `symdex watch ./myproject` once and the index stays current automatically — every file save triggers a reindex of that file, every delete removes it from the index. If you prefer manual control, run `symdex index` again at any point — SHA-256 hashing means only files that actually changed are reprocessed.
 
 **Does semantic search send my code to an API?**
 No. Embeddings are generated locally using `sentence-transformers`. Nothing leaves your machine.
@@ -612,6 +685,9 @@ Yes. The full CLI gives you direct access to every search capability — symbol 
 
 **Does it work with monorepos?**
 Yes. Index each sub-project separately with a unique `--name`, then search across all of them using `symdex search` without a `--repo` flag.
+
+**Does it handle pointers, generics, and type-resolution?**
+SymDex extracts symbols, signatures, and docstrings from parsed syntax trees. It does not perform full type inference or resolve generics at the type system level — that requires a language server per language (pylsp, rust-analyzer, etc.). SymDex's semantic search compensates: if you don't know the exact name of a generic method, `semantic_search` finds it by meaning.
 
 **What happens if a language is not supported?**
 SymDex skips files with unrecognised extensions. Supported and unsupported files can coexist in the same project — only the supported ones are indexed.
