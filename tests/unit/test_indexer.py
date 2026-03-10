@@ -4,7 +4,8 @@
 
 import os
 import pytest
-from symdex.core.indexer import index_folder, invalidate
+import subprocess
+from symdex.core.indexer import index_folder, invalidate, get_git_branch
 
 
 PY_A = '''\
@@ -120,3 +121,40 @@ def test_invalidate_single_file_causes_partial_reindex(three_file_dir):
     result = index_folder(three_file_dir)
     assert result.indexed_count == 1
     assert result.skipped_count == 2
+
+
+# --- get_git_branch tests ---
+
+def test_get_git_branch_returns_branch_name(tmp_path):
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(["git", "symbolic-ref", "HEAD", "refs/heads/feature/auth"], cwd=tmp_path, check=True, capture_output=True)
+    branch = get_git_branch(str(tmp_path))
+    assert branch == "feature-auth"
+
+
+def test_get_git_branch_sanitizes_slashes(tmp_path):
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(["git", "symbolic-ref", "HEAD", "refs/heads/task/123-fix/stuff"], cwd=tmp_path, check=True, capture_output=True)
+    branch = get_git_branch(str(tmp_path))
+    assert branch == "task-123-fix-stuff"
+
+
+def test_get_git_branch_returns_none_for_non_git_dir(tmp_path):
+    result = get_git_branch(str(tmp_path))
+    assert result is None
+
+
+def test_index_folder_uses_git_branch_when_no_name(tmp_path):
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(["git", "symbolic-ref", "HEAD", "refs/heads/feature/worktree-test"], cwd=tmp_path, check=True, capture_output=True)
+    (tmp_path / "hello.py").write_text("def hello(): pass\n")
+    result = index_folder(str(tmp_path))
+    assert result.repo == "feature-worktree-test"
+
+
+def test_index_folder_falls_back_to_dirname_when_not_git(tmp_path):
+    src = tmp_path / "myproject"
+    src.mkdir()
+    (src / "hello.py").write_text("def hello(): pass\n")
+    result = index_folder(str(src))
+    assert result.repo == "myproject"

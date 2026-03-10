@@ -226,6 +226,35 @@ def query_repos() -> list[dict]:
         conn.close()
 
 
+def get_stale_repos() -> list[dict]:
+    """Return registry entries whose root_path no longer exists on disk."""
+    conn = _get_registry_connection()
+    try:
+        rows = conn.execute(
+            "SELECT name, root_path, db_path FROM repos ORDER BY name"
+        ).fetchall()
+        return [dict(r) for r in rows if not os.path.isdir(r["root_path"])]
+    finally:
+        conn.close()
+
+
+def remove_repo(name: str) -> None:
+    """Delete a repo's registry entry and its .db file."""
+    conn = _get_registry_connection()
+    try:
+        row = conn.execute(
+            "SELECT db_path FROM repos WHERE name=?", (name,)
+        ).fetchone()
+        if row:
+            db_path = row["db_path"]
+            conn.execute("DELETE FROM repos WHERE name=?", (name,))
+            conn.commit()
+            if os.path.isfile(db_path):
+                os.remove(db_path)
+    finally:
+        conn.close()
+
+
 def upsert_embedding(conn: sqlite3.Connection, symbol_id: int, embedding: np.ndarray) -> None:
     """Store float32 embedding blob for a symbol."""
     blob = embedding.astype("float32").tobytes()

@@ -5,6 +5,8 @@
 import hashlib
 import logging
 import os
+import re
+import subprocess
 from dataclasses import dataclass
 from symdex.core.parser import parse_file
 from symdex.graph.call_graph import extract_edges as _extract_edges
@@ -72,6 +74,27 @@ class IndexResult:
     skipped_count: int
 
 
+def get_git_branch(path: str) -> str | None:
+    """Return the current git branch name for path, or None if not a git repo / detached HEAD."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", path, "symbolic-ref", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            return None
+        branch = result.stdout.strip()
+        if not branch:
+            return None
+        # Sanitize: replace path separators and special chars with '-', lowercase
+        sanitized = re.sub(r"[/\\@\s]+", "-", branch).lower().strip("-")
+        return sanitized or None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _sha256(path: str) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as fh:
@@ -91,7 +114,7 @@ def index_folder(path: str, name: str | None = None) -> IndexResult:
         IndexResult with repo, db_path, indexed_count, skipped_count.
     """
     abs_path = os.path.abspath(path)
-    repo = (name or os.path.basename(abs_path)).lower()
+    repo = (name or get_git_branch(abs_path) or os.path.basename(abs_path)).lower()
     db_path = get_db_path(repo)
     conn = get_connection(db_path)
 

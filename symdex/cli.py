@@ -16,9 +16,11 @@ from symdex.core.storage import (
     get_connection,
     get_db_path,
     get_registry_path,  # noqa: F401 — imported for monkeypatching
+    get_stale_repos,
     query_file_symbols,
     query_repos,
     query_routes,
+    remove_repo,
     search_text_in_index,
     upsert_repo,
 )
@@ -353,6 +355,27 @@ def watch(
         _watch_repo(path, name=name, interval=interval)
     except KeyboardInterrupt:
         console.print("\n[yellow]Watch stopped.[/yellow]")
+
+
+@app.command()
+def gc(
+    json_output: bool = typer.Option(False, "--json", help="Output raw JSON"),
+) -> None:
+    """Remove stale index databases for repos whose directories no longer exist."""
+    stale = get_stale_repos()
+    removed = []
+    for entry in stale:
+        remove_repo(entry["name"])
+        removed.append(entry["name"])
+    if json_output:
+        typer.echo(json.dumps({"removed": removed, "count": len(removed)}))
+        return
+    if not removed:
+        console.print("Registry is clean — nothing to remove.")
+        return
+    for name in removed:
+        console.print(f"Removed stale index: [cyan]{name}[/cyan]")
+    console.print(f"[green]{len(removed)}[/green] stale index(es) removed.")
 
 
 if __name__ == "__main__":

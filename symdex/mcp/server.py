@@ -16,6 +16,7 @@ from symdex.mcp.tools import (
     get_symbols_tool,
     index_repo_tool,
     invalidate_cache_tool,
+    gc_stale_indexes_tool,
     search_routes_tool,
 )
 
@@ -87,6 +88,11 @@ def search_routes(
     limit: int = 50,
 ) -> dict:
     return search_routes_tool(repo=repo, method=method, path_contains=path_contains, limit=limit)
+
+
+@mcp.tool(name="gc_stale_indexes", description="Remove stale index databases for repos whose directories no longer exist on disk.")
+def gc_stale_indexes() -> dict:
+    return gc_stale_indexes_tool()
 
 
 if __name__ == "__main__":

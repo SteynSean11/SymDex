@@ -9,8 +9,10 @@ from symdex.core.storage import (
     get_connection,
     get_db_path,
     get_registry_path,  # noqa: F401 — imported so tests can monkeypatch this module's reference
+    get_stale_repos,
     query_file_symbols,
     query_repos,
+    remove_repo,
     upsert_repo,
     search_text_in_index,
 )
@@ -304,3 +306,13 @@ def search_routes_tool(
     finally:
         conn.close()
     return {"routes": rows}
+
+
+def gc_stale_indexes_tool() -> dict:
+    """Remove stale index databases for repos whose directories no longer exist."""
+    stale = get_stale_repos()
+    removed = []
+    for entry in stale:
+        remove_repo(entry["name"])
+        removed.append(entry["name"])
+    return {"removed": removed, "count": len(removed)}

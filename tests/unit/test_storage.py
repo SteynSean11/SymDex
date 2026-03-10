@@ -8,12 +8,15 @@ import os
 import pytest
 from symdex.core.storage import (
     get_connection,
-    upsert_symbol,
-    upsert_file,
-    get_file_hash,
-    query_symbols,
-    query_file_symbols,
     get_db_path,
+    get_file_hash,
+    get_stale_repos,
+    query_file_symbols,
+    query_symbols,
+    remove_repo,
+    upsert_file,
+    upsert_repo,
+    upsert_symbol,
 )
 
 
@@ -138,3 +141,42 @@ def test_search_text_in_index_respects_file_pattern(tmp_path):
     results = search_text_in_index(conn, repo="r", query="target_word",
                                    repo_root=str(tmp_path), file_pattern="*.py")
     assert all(m["file"].endswith(".py") for m in results)
+
+
+# --- get_stale_repos / remove_repo tests ---
+
+@pytest.fixture
+def patched_registry(tmp_path, monkeypatch):
+    """Redirect registry to a tmp path."""
+    registry_file = str(tmp_path / "registry.db")
+    monkeypatch.setattr("symdex.core.storage.get_registry_path", lambda: registry_file)
+    return tmp_path
+
+
+def test_get_stale_repos_returns_missing_path(tmp_path, patched_registry):
+    db_file = str(tmp_path / "dead.db")
+    upsert_repo("dead-repo", root_path="/nonexistent/path/xyz", db_path=db_file)
+    stale = get_stale_repos()
+    names = [r["name"] for r in stale]
+    assert "dead-repo" in names
+
+
+def test_get_stale_repos_excludes_live_repo(tmp_path, patched_registry):
+    live_dir = tmp_path / "live"
+    live_dir.mkdir()
+    db_file = str(tmp_path / "live.db")
+    upsert_repo("live-repo", root_path=str(live_dir), db_path=db_file)
+    stale = get_stale_repos()
+    names = [r["name"] for r in stale]
+    assert "live-repo" not in names
+
+
+def test_remove_repo_deletes_db_and_registry_entry(tmp_path, patched_registry):
+    db_file = str(tmp_path / "todelete.db")
+    # Create a real db file to verify it gets removed
+    open(db_file, "w").close()
+    upsert_repo("todelete", root_path="/nonexistent", db_path=db_file)
+    remove_repo("todelete")
+    assert not os.path.isfile(db_file)
+    stale = get_stale_repos()
+    assert all(r["name"] != "todelete" for r in stale)
